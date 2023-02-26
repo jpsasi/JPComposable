@@ -11,17 +11,18 @@ import Combine
 
 public class Store<Value, Action>: ObservableObject {
     @Published var value: Value
-    let reducer: (inout Value, Action) -> Void
+    let reducer: Reducer<Value, Action>
     var cancellable: Cancellable?
     
     public init(initialValue: Value,
-                reducer: @escaping (inout Value, Action) -> Void) {
+                reducer: @escaping Reducer<Value, Action>) {
         self.value = initialValue
         self.reducer = reducer
     }
     
     public func send(_ action: Action) {
-        reducer(&value, action)
+        let effect = reducer(&value, action)
+        effect()
     }
     
     public func view<LocalValue>(
@@ -31,7 +32,8 @@ public class Store<Value, Action>: ObservableObject {
             initialValue: f(value),
             reducer: { localValue, action in
                 self.send(action)
-                self.reducer(&self.value, action)
+                localValue = f(self.value)
+                return {}
             })
         localStore.cancellable = self.$value.sink(receiveValue: { [weak localStore] value in
             localStore?.value = f(value)
@@ -48,6 +50,7 @@ public class Store<Value, Action>: ObservableObject {
             reducer: { localValue, localAction in
                 self.send(toGlobalAction(localAction))
                 localValue = toLocalValue(self.value)
+                return {}
             })
         localStore.cancellable = self.$value.sink { [weak localStore] value in
             localStore?.value = toLocalValue(value)
