@@ -21,8 +21,12 @@ public class Store<Value, Action>: ObservableObject {
     }
     
     public func send(_ action: Action) {
-        let effect = reducer(&value, action)
-        effect()
+        let effects = reducer(&value, action)
+        effects.forEach { effect in
+            if let action = effect() {
+                self.send(action)
+            }
+        }
     }
     
     public func view<LocalValue>(
@@ -33,7 +37,7 @@ public class Store<Value, Action>: ObservableObject {
             reducer: { localValue, action in
                 self.send(action)
                 localValue = f(self.value)
-                return {}
+                return []
             })
         localStore.cancellable = self.$value.sink(receiveValue: { [weak localStore] value in
             localStore?.value = f(value)
@@ -50,7 +54,7 @@ public class Store<Value, Action>: ObservableObject {
             reducer: { localValue, localAction in
                 self.send(toGlobalAction(localAction))
                 localValue = toLocalValue(self.value)
-                return {}
+                return []
             })
         localStore.cancellable = self.$value.sink { [weak localStore] value in
             localStore?.value = toLocalValue(value)

@@ -1,22 +1,14 @@
 import Foundation
 
-public typealias Effect = () -> Void
-public typealias Reducer<Value, Action> = (inout Value, Action) -> Effect
+public typealias Effect<Action> = () -> Action?
+public typealias Reducer<Value, Action> = (inout Value, Action) -> [Effect<Action>]
 
 public func combine<Value, Action>(
     _ reducers: Reducer<Value, Action>...
 ) -> Reducer<Value, Action> {
     return { value, action in
-        var effects:[Effect] = []
-        for reducer in reducers {
-            let effect = reducer(&value, action)
-            effects.append(effect)
-        }
-        return {
-            for effect in effects {
-                effect()
-            }
-        }
+        let effects = reducers.flatMap { $0(&value, action) }
+        return effects
     }
 }
 
@@ -26,9 +18,16 @@ public func pullback<LocalValue, GlobalValue, LocalAction, GlobalAction>(
     _ action: WritableKeyPath<GlobalAction, LocalAction?>
 ) -> Reducer<GlobalValue, GlobalAction> {
     return { gValue, gAction in
-        guard let localAction = gAction[keyPath: action] else { return {}}
+        guard let localAction = gAction[keyPath: action] else { return [] }
         var localValue = gValue[keyPath: value]
-        let effect = reducer(&localValue, localAction)
-        return effect
+        let localEffects = reducer(&localValue, localAction)
+        return localEffects.map { localEffect in
+            return { () -> GlobalAction? in
+                guard let localAction = localEffect() else { return nil }
+                var globalAction = gAction
+                globalAction[keyPath: action] = localAction
+                return globalAction
+            }
+        }
     }
 }
